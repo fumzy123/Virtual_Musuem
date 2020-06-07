@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<head>
+    <title>objects</title>
+
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec3 coordinates;
+        attribute vec3 normal;
+        attribute vec2 a_texture_coordinate;
+
+        attribute vec3 color;
+        varying vec3 vColor;
+        varying vec3 vNormal;
+
+        uniform vec3 eyePosition;
+        uniform vec3 u_movingPointLightPosition;
+        uniform vec3 u_headSpotLightPosition;
+        uniform vec3 u_mouseSpotLightPosition;
+
+        varying vec3 surfaceToLightLeft;
+        varying vec3 surfaceToLightRight;
+        varying vec3 surfaceToMovingPointLight;
+        varying vec3 surfaceToHeadSpotLight;
+        varying vec3 surfaceToMouseSpotLight;
+        varying vec3 surfaceToEye;
+
+        varying vec2 v_texture_coordinate;
+        
+         
+        uniform mat4 Pmatrix;
+        uniform mat4 Vmatrix;
+        uniform mat4 Mmatrix;
+        uniform mat3 normalMatrix;
+        uniform mat4 shadowMVatrix;
+
+        
+
+        uniform float mode_shadow;
+
+        uniform vec3 pointLightPositionLeft;
+        uniform vec3 pointLightPositionRight;
+
+
+        void main(void) {
+            //vec3 pointLightPositionLeft = vec3(-20,0,0);
+            //vec3 pointLightPositionRight = vec3(0,0,0);
+            
+            gl_Position = Pmatrix * Vmatrix * Mmatrix * vec4(coordinates, 1);
+            if(mode_shadow == 1.0){
+                gl_Position = Pmatrix * shadowMVatrix * vec4(coordinates, 1);
+            }
+
+
+            vNormal = normalMatrix*normal;
+            vColor = color;
+            v_texture_coordinate = a_texture_coordinate;
+
+            vec3 surfaceWorldPosition = (Mmatrix * vec4(coordinates, 1)).xyz;
+            surfaceToLightLeft = pointLightPositionLeft - surfaceWorldPosition;
+            surfaceToLightRight = pointLightPositionRight - surfaceWorldPosition;
+            surfaceToMovingPointLight = u_movingPointLightPosition - surfaceWorldPosition;
+            surfaceToHeadSpotLight = u_headSpotLightPosition - surfaceWorldPosition;
+            surfaceToMouseSpotLight = u_mouseSpotLightPosition - surfaceWorldPosition;
+            surfaceToEye = surfaceWorldPosition - eyePosition;
+
+        }
+
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+
+        precision mediump float;
+
+        varying vec3 vColor;
+        varying vec3 vNormal;
+
+
+        varying vec3 surfaceToLightLeft;
+        varying vec3 surfaceToLightRight;
+        varying vec3 surfaceToMovingPointLight;
+        varying vec3 surfaceToHeadSpotLight;
+        varying vec3 surfaceToMouseSpotLight;
+        varying vec3 surfaceToEye;
+
+        //Spot-light direction and limit
+        uniform vec3 u_headSpotLightDirection;
+        uniform float u_headSpotLightLimit;
+
+        //Mouse spot light direction and limit
+        uniform vec3 u_mouseSpotLightDirection;
+        uniform float u_mouseSpotLightLimit;
+        
+
+        //Materials
+        uniform vec3 Ka;
+        uniform vec3 Kd;
+        uniform vec3 Ks;
+        uniform float u_shininess;
+
+
+        //Textures
+        uniform sampler2D u_Sampler;
+        varying vec2 v_texture_coordinate;
+
+        //Light switches and sliders
+        uniform float mode_left;
+        uniform float mode_right;
+        uniform float mode_topMovingLight;
+        uniform float mode_headSpotLight;
+        uniform float mode_mouseSpotLight;
+        uniform float mode_ambient;
+        uniform float mode_shadow2;
+
+
+        //Left Light Diffuse
+        uniform vec3 pointLightDiffuse;
+        uniform vec3 pointLightDiffuse2;
+
+        //Offscreen checker
+        uniform float uOffscreen;
+        uniform vec3 Objectcode;
+
+        void main(void) {
+            //N is our normalized normal
+            vec3 N = normalize(vNormal);
+            vec3 V = normalize(surfaceToEye);
+
+            //Left point light
+            vec3 pointLightAmbient = vec3(0.1,0.1,0.1);
+            //vec3 pointLightDiffuse =  vec3(0.4,0.4,0.4);
+            vec3 pointLightSpecular = vec3(0.5,0.5,0.5);
+
+            //Right point light
+            vec3 pointLightAmbient2 = vec3(0.1,0.1,1.0);
+            //vec3 pointLightDiffuse2 =  vec3(0.0,0.0,1.0);
+            vec3 pointLightSpecular2 = vec3(0.5,0.5,0.5);
+
+            //Top moving light
+            vec3 movingPointLightAmbient = vec3(1.0,1.0,1.0);
+            vec3 movingPointLightDiffuse = vec3(1.0,1.0,1.0);
+            vec3 movingPointLightSpecular = vec3(1.0,1.0,1.0);
+
+            //Head spot light
+            vec3 headSpotLightAmbient = vec3(0.1,0.1,0.1);
+            vec3 headSpotLightDiffuse = vec3(1.0,1.0,1.0);
+            vec3 headSpotLightSpecular = vec3(1.0,1.0,1.0);
+
+            //Mosue spot light
+            vec3 mouseSpotLightAmbient = vec3(0.1,0.1,0.1);
+            vec3 mouseSpotLightDiffuse = vec3(1.0,1.0,1.0);
+            vec3 mouseSpotLightSpecular = vec3(1.0,1.0,1.0);
+          
+            //L is our normalized surface to lightDirection
+            vec3 L = normalize(surfaceToLightLeft);
+            vec3 R = reflect(-L,N);
+
+            vec3 L2 = normalize(surfaceToLightRight);
+            vec3 R2 = reflect(-L2,N);
+
+            vec3 L3 = normalize(surfaceToMovingPointLight);
+            vec3 R3 = reflect(-L3,N);
+
+            vec3 L4 = normalize(surfaceToHeadSpotLight);
+            vec3 R4 = reflect(-L4,N);
+
+            vec3 L5 = normalize(surfaceToMouseSpotLight);
+            vec3 R5 = reflect(-L5,N);
+
+
+
+            
+            //Compute Ambient
+            vec3 ambient = Ka * pointLightAmbient;
+            vec3 ambient2 = Ka * pointLightAmbient2;
+            vec3 ambient3 = Ka * movingPointLightAmbient;
+            vec3 ambient4 = Ka * headSpotLightAmbient;
+            vec3 ambient5 = Ka * mouseSpotLightAmbient;
+
+            //Compute Diffuse
+            float lambert = max(dot(L, N), 0.0);
+            vec3 diffuse = Kd * lambert * pointLightDiffuse*mode_left;
+
+            float lambert2 = max(dot(L2, N), 0.0);
+            vec3 diffuse2 = Kd * lambert2 * pointLightDiffuse2*mode_right;
+
+            float lambert3 = max(dot(L3,N),0.0);
+            vec3 diffuse3 = Kd * lambert3 * movingPointLightDiffuse * mode_topMovingLight;
+
+            //Compute Head SpotLight Diffuse
+            float dotFromSpotLightDirection = dot(L4,-u_headSpotLightDirection);
+            float inLight = step(u_headSpotLightLimit, dotFromSpotLightDirection);
+            float lambert4 = inLight * max(dot(L4,N),0.0);
+            vec3 diffuse4 = Kd * lambert4 * headSpotLightDiffuse * mode_headSpotLight;
+
+            float dotFromMouseSpotLightDirection = dot(L5, -u_mouseSpotLightDirection);
+            float mouse_inlight = step(u_mouseSpotLightLimit, dotFromMouseSpotLightDirection);
+            float lambert5 = mouse_inlight * max(dot(L5,N),0.0);
+            vec3 diffuse5 = Kd * lambert5 * mouseSpotLightDiffuse * mode_mouseSpotLight;
+
+            //Compute Specular
+            float specAngle = max(dot(R, V), 0.0);
+            float spec = pow(specAngle, 16.0);
+            vec3 specular = Ks * spec * pointLightSpecular*mode_left;
+            
+            float specAngle2 = max(dot(R2, V), 0.0);
+            float spec2 = pow(specAngle2, u_shininess);
+            vec3 specular2 = Ks * spec2 * pointLightSpecular2*mode_right;
+
+            float specAngle3 = max(dot(R3,V), 0.0);
+            float spec3 = pow(specAngle3, 16.0);
+            vec3 specular3 = Ks * spec3 * movingPointLightSpecular * mode_topMovingLight;
+
+            //Compute Head SpotLight Specular
+            float specAngle4 = max(dot(R4,V), 0.0);
+            float spec4 = pow(specAngle4, 16.0);
+            vec3 specular4 = inLight * Ks * spec4 * headSpotLightSpecular * mode_headSpotLight;
+
+            //Compute Mouse SpotLight Specular
+            float specAngle5 = max(dot(R5,V), 0.0);
+            float spec5 = pow(specAngle5, 16.0);
+            vec3 specular5 = mouse_inlight * Ks * spec5 * mouseSpotLightSpecular * mode_mouseSpotLight;
+     
+            //Total ambient, diffuse, Specular
+            vec3 total_ambient = (ambient + ambient2 + ambient3)*mode_ambient; 
+            vec3 total_diffuse = diffuse + diffuse2 + diffuse3 + diffuse4 + diffuse5;
+            vec3 total_specular = specular + specular2 + specular3 + specular4 + specular5;
+
+            vec4 texelColor = texture2D(u_Sampler, v_texture_coordinate);   
+
+            //Setting gl_FragColor
+            if(uOffscreen == 1.0){
+                gl_FragColor = vec4(Objectcode, 1.0);
+            }
+            else{
+                gl_FragColor =  vec4(texelColor.rgb * (total_diffuse + total_ambient + total_specular),1.0);
+            }
+                    //vec4(total_diffuse + total_ambient + total_specular, 1.0); //vec4(N + vColor,1.0);     //  //texture2D(u_Sampler, v_texture_coordinate);             
+        }
+
+    </script>
+
+    
+
+</head>
+
+<body>
+    <canvas width = "1700" height = "700" id = "my_Canvas"></canvas>
+    
+
+    
+    <img id="frame1" crossorigin="anonymous" src="mona2.png" height="0" width="0">
+    
+   <img id="room" crossorigin="anonymous" src="museumWall2.jpg" height="0" width="0">  
+    <img id="floor" crossorigin="anonymous" src="basket.jpg" height="0" width="0"> 
+    <img id="mainLight" crossorigin="anonymous" src="glass.png" height="0" width="0"> 
+    <img id="picture1" crossorigin="anonymous" src="mona2.png" height="0" width="0"> 
+    <img id="picture2" crossorigin="anonymous" src="couple3.png" height="0" width="0"> 
+   <img id="picture3" crossorigin="anonymous" src="pearl.jpg" height="0" width="0"> 
+     <img id="picture4" crossorigin="anonymous" src="time2.jpg" height="0" width="0">
+
+     <img id="my_image" crossorigin="anonymous" src="basket.jpg" height="0" width="0">
+     <img id="fan" crossorigin="anonymous" src="fan.jpg" height="0" width="0">
+     <img id="monkey" crossorigin="anonymous" src="concreteWall.png" height="0" width="0">
+     <img id="mainLight" crossorigin="anonymous" src="glass.png" height="0" width="0">
+
+
+
+    <script type="text/javascript" src="try4.js"></script>
+    <script type="text/javascript" src="model2.js"></script>
+    <script type="text/javascript" src="initShaders.js"></script>
+    <script type="text/javascript" src="glMatrix.js"></script>
+    <script type="text/javascript" src="coordinate.js"></script>
+    <script type="text/javascript" src="object.js"></script>
+
+
+    <div style=" text-align: center;">
+        <p>Hint: Lower the ambience to about 9 to fully appreciate the individual light sources in the scene </p>
+        <p>Hint: Increase the ambience to about 45 to fully appreciate the paintings on the wall</p>
+        <p>Ambience: <input autocomplete="off" type="range" min="0" max="100" value="30" class="slider" id="myRange" onchange="AmbientLight()"> <span id="demo"></span></p>
+    </div>
+
+
+
+    <div class="slidecontainer" style="display: inline-block; text-align: center;">
+        <p>Press <b>w</b> to move <b>forward</b></p>
+        <p>Press <b>s</b> to move <b>backward</b></p>
+        <p>Hold <b>left-click</b> and move mouse to <b>look left and right</b></p>
+        <p>Press <b>a</b> to move <b>forward-left</b></p>
+        <p>Press <b>d</b> to move <b>forward-right</b></p>
+        <p>Press <b>e</b> to  raise eye level <b>up</b></p>
+        <p>Press <b>q</b> to  raise eye level <b>down</b></p>
+
+    </div>
+    
+
+    <div style="display: inline-block; text-align: center;">
+        <p>Press <b>l</b> to toggle the left light</p>
+        <p>Move left light: <input autocomplete="off" type="range" min="12" max="68" value="20" class="slider" id="moveLeft" onchange="moveLeftLight()"> </p>
+        <p>Change red color of left-light: <input autocomplete="off" type="range" min="0" max="255" value="0" class="slider" id="colorLeftX" onchange="colorLeftLight()"> </p>
+        <p>Change green color of left-light: <input autocomplete="off" type="range" min="0" max="255" value="128" class="slider" id="colorLeftY" onchange="colorLeftLight()"> </p>
+        <p>Change blue color of left-light: <input autocomplete="off" type="range" min="0" max="255" value="128" class="slider" id="colorLeftZ" onchange="colorLeftLight()"> </p>
+    </div>
+        
+    
+    <div style="display: inline-block;  text-align: center;">
+        <p>Press <b>r</b> to toggle the right light</p>
+        <p>Move right light: <input autocomplete="off" type="range" min="12" max="68" value="20" class="slider" id="moveRight" onchange="moveRightLight()"> </p>
+        <p>Change red color of right-light: <input autocomplete="off" type="range" min="0" max="255" value="128" class="slider" id="colorRightX" onchange="colorRightLight()"> </p>
+        <p>Change green color of right-light: <input autocomplete="off" type="range" min="0" max="255" value="128" class="slider" id="colorRightY" onchange="colorRightLight()"> </p>
+        <p>Change blue color of right-light: <input autocomplete="off" type="range" min="0" max="255" value="128" class="slider" id="colorRightZ" onchange="colorRightLight()"> </p>
+    </div>
+
+
+    <div style="display: inline-block;  text-align: center;">
+        <p>Press <b>t</b> to toggle the room main light</p>
+        <p>Press <b>f</b> to switch fan on</p>
+        <p>Left click an object to select it</p>
+    </div>
+        
+        
+    
+   
+
+    <script>
+        var slider = document.getElementById("myRange");
+        var output = document.getElementById("demo");
+        output.innerHTML = slider.value;
+        
+        slider.oninput = function() {
+            output.innerHTML = this.value*1;
+            AmbientLight();  
+            console.log(slider.value)      
+        }
+    </script>
+
+    <script>
+        window.addEventListener("keypress", check_key);
+
+        function check_key(e){
+
+            switch(e.keyCode){
+                
+                case 49:
+                    cube_flag = !cube_flag;
+                    break;
+
+                case 50:
+                    cuboid_flag = !cuboid_flag;
+                    break;
+
+                case 51:
+                    butterfly_flag = !butterfly_flag;
+                    break;
+
+                case 52:
+                    prism_flag = !prism_flag;
+                    break;
+
+                case 53:
+                    tetra_flag = !tetra_flag;
+                    break;
+
+                case 111:
+                    pers_view = false;
+                    console.log("ortho");
+                    break;
+
+                case 112:
+                    pers_view = true;
+                    console.log("perspective");
+                    break;
+
+                case 119:
+                    forward_flag = true;
+                    break;
+
+                case 115:
+                    backward_flag = true;
+                    console.log("move");
+                    break;
+
+                case 97:
+                    approach_flag = !approach_flag;
+                    break;
+
+                case 100:
+                    approachRight_flag = !approachRight_flag;
+                    break;
+                
+                case 101:
+                    up_flag = true;
+                    break;
+                
+                case 113:
+                    down_flag = true;
+                    //console.log('hy')
+                    break;
+
+                case 114:
+                    rightLight = !rightLight;
+                    console.log("RR",rightLight)
+                    break;
+                case 108:
+                    LeftLight = !LeftLight
+                    console.log("LL",LeftLight)
+                    break;
+                case 116:
+                    topMovingLight = !topMovingLight;
+                    console.log("Moving light");
+                    break;
+                case 104:
+                    headSpotLight = !headSpotLight;
+                    break;
+                case 109:
+                    mouseSpotLight = !mouseSpotLight;
+                    break;
+                case 102:
+                fan_flag = !fan_flag;
+                break;
+
+            }
+        }
+
+        
+        canvas.addEventListener('mouseup', function(evt){
+            dragging = false;
+
+
+        });
+
+        canvas.addEventListener('mousedown', function(evt){
+            dragging = true;
+            x = evt.clientX;
+            y = evt.clientY;
+
+            //console.log(dragging, x, y);
+
+        });
+
+        
+        canvas.addEventListener('mousemove', function(evt){
+            mouse_left_right = -0.045 *(evt.pageX - canvas.width/ 2.0);
+            mouse_up_down = -0.062 *(evt.pageY - canvas.height/ 2.0);
+            //console.log(`Mouse-Left-Right is : ${mouse_left_right}`);
+
+            //Get last (x,y) position and current (x,y) position
+            if (evt.which==1||evt.which==2||evt.which==3){
+
+                var lastX = x;
+                var lastY = y;
+                x = evt.clientX;
+                y = evt.clientY;
+
+                if (!dragging) return;
+                var dx = x - lastX;
+                var dy = y - lastY;
+                
+                rotateCam(dx,dy);
+                //translateCam(dy);
+            }
+            
+            
+        });
+
+        function rotateCam(dx,dy){
+            var delta_elevation = -20.0 / canvas.height;
+            var delta_azimuth   = -20.0 / canvas.width;
+            
+            left_right += dx * delta_azimuth * 10;
+
+            if (left_right > 360 || left_right <-360) {
+                left_right = left_right % 360;
+            }
+
+            // nAzimuth = dx * delta_azimuth * 10;
+	        // nElevation = dy * delta_elevation * 10;
+        }
+
+
+
+
+
+        function translateCam(value){
+            var dv = 2 * 10 * value / canvas.height;
+            //console.log(dv);
+            dolly(Math.pow(1.1,dv))
+        }
+
+        
+        function dolly(s){
+            var p = vec3.create();
+            var n = vec3.create();
+
+            p = cameraEye
+            var step = s - steps;
+
+            //console.log(normal);
+
+            vec3.normalize(n,normal);
+
+            //console.log(n);
+            var newPosition = vec3.create();
+            newPosition[0] = p[0] - step*n[0];
+            newPosition[1] = p[1] - step*n[1];
+            newPosition[2] = p[2] - step*n[2];
+            
+            //console.log(newPosition);
+
+            setPosition(newPosition[0], newPosition[1], newPosition[2]);
+            steps = s;
+        }
+
+        function setPosition(x,y,z){
+           cameraNewPos[0] = x;
+           cameraNewPos[1] = y;
+           cameraNewPos[2] = z;
+
+           //console.log(cameraNewPos);
+        }
+
+
+
+
+        canvas.onmouseup = function (ev){    
+            //capture coordinates from the ev event  
+                var x, y, top = 0, left = 0, obj = canvas;
+                
+                while (obj && obj.tagName !== 'BODY') {
+                    top  += obj.offsetTop;  
+                    left += obj.offsetLeft;  
+                    obj   = obj.offsetParent; 
+                    //console.log(top, left,obj)
+                }
+                    left += window.pageXOffset; 
+                    top  -= window.pageYOffset;
+                    //console.log(left, top)
+
+                    x = ev.clientX - left; 
+                    y = canvas.height - (ev.clientY - top);
+                    console.log("x", "y ",x,y)
+
+                    var readout = new Uint8Array(1 * 1 * 4);
+
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer); 
+                    gl.readPixels(x, y,1,1,gl.RGBA,gl.UNSIGNED_BYTE,readout); 
+                    console.log(readout)
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+                    //Funtion from Webgl beginner Guide bu Diego & Brandon
+                    function compare(readout, color){  
+                        return (Math.abs(Math.round(color[0]*255) - readout[0]) <= 1 &&     Math.abs(Math.round(color[1]*255) - readout[1]) <= 1 &&       Math.abs(Math.round(color[2]*255) - readout[2]) <= 1); 
+                    }
+                    //-------------------------------------------------
+
+                    for(var i = 0, max = allTheCode.length; i < max; i+=1){  
+                        if (compare(readout, allTheCode[i])){
+                            console.log("All the color code: ", allTheCode[i]);
+                             pickedObject = museumObjects[i];
+                                break;    
+                            } 
+                        }
+
+                    console.log(pickedObject)
+            }
+        
+    </script>
+    
+
+</body>
